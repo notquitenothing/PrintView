@@ -1,0 +1,8 @@
+services:
+  model-preview-gen: 
+    build:
+      context: .
+    env_file:
+      - .env
+    volumes:
+      - "/your/models/path/here:/models"

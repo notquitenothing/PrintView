@@ -1,0 +1,37 @@
+[
+  {
+    "options": {
+      "grid": false,
+      "axis": false,
+      "filename": false,
+
+      "ambient-occlusion": true,
+
+      "anti-aliasing": true,
+      "anti-aliasing-mode": "ssaa",
+
+      "color": "0.145,0.145,0.145",
+      "base-ior": 1.50,
+      "metallic": 0,
+      "opacity": 1,
+
+      "tone-mapping": true,
+      "translucency-support": false,
+
+      "up": "+Z",
+      "resolution": "1024,1024",
+      "camera-zoom-factor": 1.0,
+
+      "hdri-file": "./resources/DayEnvironmentHDRI025_1K-HDR.exr",
+      "hdri-ambient": true,
+      "hdri-skybox": false,
+      "render.light.intensity": 0,
+      "blur-background": false,
+      "background-color": "0.17,0.17,0.17",
+
+      "raytracing": true,
+      "render.raytracing.denoise": true,
+      "render.raytracing.samples": 5
+    }
+  }
+]
