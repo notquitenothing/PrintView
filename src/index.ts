@@ -4,11 +4,16 @@ import { execSync } from 'child_process'
 import type { DataPackage, UpDirection } from './types/DataPackage'
 
 const MODELS_DIR = process.env.MODELS_DIR ?? '/models'
-const OVERWRITE = booleanString(process.env.OVERWRITE)
+
 const INPUT_EXTS = process.env.INPUT_EXTS ?? 'stl,obj'
-const GEN_ANIM = booleanString(process.env.GEN_ANIM)
+
 const GEN_STATIC = booleanString(process.env.GEN_STATIC) ?? true
-const ANIM_FPS = posIntString(process.env.ANIM_FPS) ?? 20
+const GEN_ANIM = booleanString(process.env.GEN_ANIM)
+
+const OVERWRITE = booleanString(process.env.OVERWRITE)
+const REMOVE_EXISTING = booleanString(process.env.OVERWRITE)
+
+const ANIM_FPS = posIntString(process.env.ANIM_FPS) ?? 30
 const ANIM_DUR = parseFloat((posFloatString(process.env.ANIM_DUR) ?? 6).toFixed(1))
 
 const TEMP_DIR = './temp'
@@ -85,6 +90,14 @@ function removeMatchingFiles(dirPath: string, match: RegExp) {
   }
 }
 
+function removeStaticPreviews(dirPath: string, fileBaseName: string) {
+  removeMatchingFiles(dirPath, new RegExp(`^${escapeRegExp(fileBaseName)}_preview_s(_.*)?\\.avif$`))
+}
+
+function removeAnimatedPreviews(dirPath: string, fileBaseName: string) {
+  removeMatchingFiles(dirPath, new RegExp(`^${escapeRegExp(fileBaseName)}_preview_a(_.*)?\\.avif$`))
+}
+
 // replace with RegExp.escape when available
 const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -144,10 +157,16 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
       // Get input file base name without extension
       const fileBaseName = path.basename(fileName, path.extname(fileName))
 
+      // If REMOVE_EXISTING then remove existing previews before starting
+      if (REMOVE_EXISTING) {
+        removeStaticPreviews(currentPath, fileBaseName)
+        removeAnimatedPreviews(currentPath, fileBaseName)
+      }
+
       // GENERATE PNG PREVIEW
       if (GEN_STATIC) {
       // Replace extension with .png
-        const previewFileBaseName = `${fileBaseName}_preview${filenameOptions}`
+        const previewFileBaseName = `${fileBaseName}_preview_s${filenameOptions}`
         const previewCachePngPath = path.join(TEMP_DIR, `${previewFileBaseName}.png`)
         const previewCacheAvifPath = path.join(TEMP_DIR, `${previewFileBaseName}.avif`)
         const previewOutputPath = path.join(currentPath, `${previewFileBaseName}.avif`)
@@ -168,10 +187,10 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
 
             // use ffmpeg to compress to avif
             execSync(
-              `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${previewCachePngPath}" -c:v libsvtav1 -preset 1 -crf 20 -crf 10 -svtav1-params tune=0:fast-decode=1:avif=1 ${previewCacheAvifPath}`,
+              `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${previewCachePngPath}" -c:v libsvtav1 -preset 1 -crf 10 -svtav1-params tune=0:fast-decode=1:avif=1 ${previewCacheAvifPath}`,
               { stdio: ['ignore', 'pipe', 'pipe'] })
 
-            removeMatchingFiles(currentPath, new RegExp(`^${escapeRegExp(fileBaseName)}_preview(?!.*_a)((.*\\.png)|(.*\\.avif))$`))
+            removeStaticPreviews(currentPath, fileBaseName)
             fs.cpSync(previewCacheAvifPath, previewOutputPath)
           } catch (error) {
             console.error(`Error generating PNG preview:`, (error as Error).message)
@@ -221,7 +240,7 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
               `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${path.join(TEMP_DIR, `${fileBaseName}_%03d.png`)}" -c:v libsvtav1 -preset 1 -crf 20 -g ${String(Math.round(ANIM_FPS * 10))} -svtav1-params tune=0:fast-decode=1 ${animatedCachePath}`,
               { stdio: ['ignore', 'pipe', 'pipe'] })
 
-            removeMatchingFiles(currentPath, new RegExp(`^${escapeRegExp(fileBaseName)}_preview((_a.*\\.avif)|(.*\\.gif))$`))
+            removeAnimatedPreviews(currentPath, fileBaseName)
             fs.cpSync(animatedCachePath, animatedOutputPath)
           } catch (error) {
             console.error(`Error generating Animated preview:`, (error as Error).message)

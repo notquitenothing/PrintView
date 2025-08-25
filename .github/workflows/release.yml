@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    branches: 
+      - main
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+      
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Login GitHub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login Dockerhub
+        uses: docker/login-action@v3
+        with:
+          username: notquitenothing
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: DOCKER_IMAGE_NAME
+        run: |
+          DOCKER_IMAGE_NAME="notquitenothing/printview"
+          # Make DOCKER_IMAGE_NAME accessible in other steps
+          echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME}" >>${GITHUB_ENV}
+          
+      - name: Docker Metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.DOCKER_IMAGE_NAME }}
+            ghcr.io/${{ env.DOCKER_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=edge
+            # set edge tag if manual run
+            type=raw,value=edge,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Docker QEMU
+        uses: docker/setup-qemu-action@v3
+        
+      - name: Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Push
+        uses: docker/build-push-action@v6
+        id: docker-build
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          push: true
+          cache-from: |
+            type=registry,ref=notquitenothing/cache:printview-release
+          cache-to: type=registry,mode=max,ref=notquitenothing/cache:printview-release
+
+      - name: Docker Hub Description Update
+        uses: peter-evans/dockerhub-description@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          username: notquitenothing
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKER_IMAGE_NAME }}
+          short-description: ${{ github.event.repository.description }}
+          enable-url-completion: true
