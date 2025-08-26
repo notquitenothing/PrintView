@@ -26,6 +26,7 @@ const EXT_LIST = INPUT_EXTS.split(' ')
   .split(',')
 
 const errorFiles: string[] = []
+const successFiles: string[] = []
 
 function booleanString(value: unknown): boolean | null {
   if (typeof value === 'boolean') {
@@ -192,6 +193,9 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
 
             removeStaticPreviews(currentPath, fileBaseName)
             fs.cpSync(previewCacheAvifPath, previewOutputPath)
+            if (!successFiles.includes(filePath)) {
+              successFiles.push(filePath)
+            }
           } catch (error) {
             console.error(`Error generating PNG preview:`, (error as Error).message)
             if (!errorFiles.includes(filePath)) {
@@ -242,6 +246,9 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
 
             removeAnimatedPreviews(currentPath, fileBaseName)
             fs.cpSync(animatedCachePath, animatedOutputPath)
+            if (!successFiles.includes(filePath)) {
+              successFiles.push(filePath)
+            }
           } catch (error) {
             console.error(`Error generating Animated preview:`, (error as Error).message)
             if (!errorFiles.includes(filePath)) {
@@ -261,16 +268,20 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
   })
 }
 
-// Clean exit even on Ctrl+C, so f3d doesn't continue running after stop
-function exitClean() {
-  process.exit()
+// Make sure TEMP_DIR exists and is directory
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR)
 }
-process.on('SIGTERM', exitClean)
-process.on('SIGINT', exitClean)
+if (!fs.statSync(TEMP_DIR).isDirectory()) {
+  throw new Error(`${TEMP_DIR} must be a directory!`)
+}
 
 // Start walking from the initial directory
 walkDirectory(MODELS_DIR)
 if (errorFiles.length) {
   console.error(`The following ${String(errorFiles.length)} files had issues:\n`, errorFiles.join('\n'))
+}
+if (successFiles.length) {
+  console.log(`Created ${String(successFiles.length)} preview files.`)
 }
 console.log('Done generating previews.')
