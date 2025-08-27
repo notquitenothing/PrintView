@@ -1,5 +1,5 @@
 services:
-  model-preview-gen: 
+  printview: 
     build:
       context: .
     env_file:
