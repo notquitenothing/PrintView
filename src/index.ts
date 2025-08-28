@@ -11,7 +11,7 @@ const GEN_STATIC = booleanString(process.env.GEN_STATIC) ?? true
 const GEN_ANIM = booleanString(process.env.GEN_ANIM)
 
 const OVERWRITE = booleanString(process.env.OVERWRITE)
-const REMOVE_EXISTING = booleanString(process.env.OVERWRITE)
+const REMOVE_EXISTING = booleanString(process.env.REMOVE_EXISTING)
 
 const ANIM_FPS = posIntString(process.env.ANIM_FPS) ?? 30
 const ANIM_DUR = parseFloat((posFloatString(process.env.ANIM_DUR) ?? 6).toFixed(1))
