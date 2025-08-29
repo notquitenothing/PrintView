@@ -6,6 +6,7 @@ import type { DataPackage, UpDirection } from './types/DataPackage'
 const MODELS_DIR = process.env.MODELS_DIR ?? '/models'
 
 const INPUT_EXTS = process.env.INPUT_EXTS ?? 'stl,obj'
+const RANDOM_ORDER = booleanString(process.env.RANDOM_ORDER)
 
 const GEN_STATIC = booleanString(process.env.GEN_STATIC) ?? true
 const GEN_ANIM = booleanString(process.env.GEN_ANIM)
@@ -102,6 +103,14 @@ function removeAnimatedPreviews(dirPath: string, fileBaseName: string) {
 // replace with RegExp.escape when available
 const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+// Shuffle an array in place. Returns the array for easier chaining
+function arrShuffle(arr: unknown[]) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+}
+
 // Recursively walk through directory
 function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
   // Read contents of current directory
@@ -128,143 +137,149 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
     return a.toLowerCase().localeCompare(b.toLowerCase())
   })
 
+  files = files.concat(dirs)
+
+  if (RANDOM_ORDER) {
+    arrShuffle(files)
+  }
+
   files.forEach((fileName) => {
     // Get full path of current file
     const filePath = path.join(currentPath, fileName)
 
-    // Find in datapackage.json
-    const resource = currentDataPackage?.resources.find(r => path.join(currentDataPackage.dataPath, r.path) === filePath)
+    if (fs.statSync(filePath).isDirectory()) {
+      walkDirectory(filePath, currentDataPackage)
+    } else if (fs.statSync(filePath).isFile()) {
+      // Find in datapackage.json
+      const resource = currentDataPackage?.resources.find(r => path.join(currentDataPackage.dataPath, r.path) === filePath)
 
-    if (resource) {
-      resource.up = parseUpDirection(resource.up)
-    }
-    const cachedFilePath = path.join(TEMP_DIR, fileName)
+      if (resource) {
+        resource.up = parseUpDirection(resource.up)
+      }
+      const cachedFilePath = path.join(TEMP_DIR, fileName)
 
-    // Cleanup files stored in cache directory from any previous runs
-    removeMatchingFiles(TEMP_DIR, new RegExp('.*'))
+      // Cleanup files stored in cache directory from any previous runs
+      removeMatchingFiles(TEMP_DIR, new RegExp('.*'))
 
-    try {
+      try {
       // extra f3d cmd options and output file name modifiers
-      let cmdOptions = ''
-      let filenameOptions = ''
-      if (resource?.up) {
-        cmdOptions += ` --up="${resource.up}"`
-        filenameOptions += `_${resource.up.replace('+', '').replace('-', 'n')}`
-      } else {
-        cmdOptions += ` --up="+z"`
-        filenameOptions += `_z`
-      }
+        let cmdOptions = ''
+        let filenameOptions = ''
+        if (resource?.up) {
+          cmdOptions += ` --up="${resource.up}"`
+          filenameOptions += `_${resource.up.replace('+', '').replace('-', 'n')}`
+        } else {
+          cmdOptions += ` --up="+z"`
+          filenameOptions += `_z`
+        }
 
-      // Get input file base name without extension
-      const fileBaseName = path.basename(fileName, path.extname(fileName))
+        // Get input file base name without extension
+        const fileBaseName = path.basename(fileName, path.extname(fileName))
 
-      // If REMOVE_EXISTING then remove existing previews before starting
-      if (REMOVE_EXISTING) {
-        removeStaticPreviews(currentPath, fileBaseName)
-        removeAnimatedPreviews(currentPath, fileBaseName)
-      }
+        // If REMOVE_EXISTING then remove existing previews before starting
+        if (REMOVE_EXISTING) {
+          removeStaticPreviews(currentPath, fileBaseName)
+          removeAnimatedPreviews(currentPath, fileBaseName)
+        }
 
-      // GENERATE PNG PREVIEW
-      if (GEN_STATIC) {
-      // Replace extension with .png
-        const previewFileBaseName = `${fileBaseName}_preview_s${filenameOptions}`
-        const previewCachePngPath = path.join(TEMP_DIR, `${previewFileBaseName}.png`)
-        const previewCacheAvifPath = path.join(TEMP_DIR, `${previewFileBaseName}.avif`)
-        const previewOutputPath = path.join(currentPath, `${previewFileBaseName}.avif`)
+        // GENERATE PNG PREVIEW
+        if (GEN_STATIC) {
+          // Replace extension with .png
+          const previewFileBaseName = `${fileBaseName}_preview_s${filenameOptions}`
+          const previewCachePngPath = path.join(TEMP_DIR, `${previewFileBaseName}.png`)
+          const previewCacheAvifPath = path.join(TEMP_DIR, `${previewFileBaseName}.avif`)
+          const previewOutputPath = path.join(currentPath, `${previewFileBaseName}.avif`)
 
-        if (!fs.existsSync(previewOutputPath) || OVERWRITE) {
-          console.log(previewOutputPath)
+          if (!fs.existsSync(previewOutputPath) || OVERWRITE) {
+            console.log(previewOutputPath)
 
-          // put file in temp directory
-          if (!existsSync(cachedFilePath)) {
-            fs.cpSync(filePath, cachedFilePath)
-          }
-
-          // Make preview image
-          try {
-            execSync(
-              `f3d "${cachedFilePath}" --config="${F3D_CONFIG_PATH}" --output="${previewCachePngPath}"${cmdOptions}`,
-              { stdio: ['pipe', 'pipe', 'pipe'] })
-
-            // use ffmpeg to compress to avif
-            execSync(
-              `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${previewCachePngPath}" -c:v libsvtav1 -preset 1 -crf 10 -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1:avif=1 "${previewCacheAvifPath}"`,
-              { stdio: ['ignore', 'pipe', 'pipe'] })
-
-            removeStaticPreviews(currentPath, fileBaseName)
-            fs.cpSync(previewCacheAvifPath, previewOutputPath)
-            if (!successFiles.includes(filePath)) {
-              successFiles.push(filePath)
+            // put file in temp directory
+            if (!existsSync(cachedFilePath)) {
+              fs.cpSync(filePath, cachedFilePath)
             }
-          } catch (error) {
-            console.error(`Error generating PNG preview:`, (error as Error).message)
-            if (!errorFiles.includes(filePath)) {
-              errorFiles.push(filePath)
+
+            // Make preview image
+            try {
+              execSync(
+                `f3d "${cachedFilePath}" --config="${F3D_CONFIG_PATH}" --output="${previewCachePngPath}"${cmdOptions}`,
+                { stdio: ['pipe', 'pipe', 'pipe'] })
+
+              // use ffmpeg to compress to avif
+              execSync(
+                `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${previewCachePngPath}" -c:v libsvtav1 -preset 1 -crf 10 -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1:avif=1 "${previewCacheAvifPath}"`,
+                { stdio: ['ignore', 'pipe', 'pipe'] })
+
+              removeStaticPreviews(currentPath, fileBaseName)
+              fs.cpSync(previewCacheAvifPath, previewOutputPath)
+              if (!successFiles.includes(filePath)) {
+                successFiles.push(filePath)
+              }
+            } catch (error) {
+              console.error(`Error generating PNG preview:`, (error as Error).message)
+              if (!errorFiles.includes(filePath)) {
+                errorFiles.push(filePath)
+              }
             }
           }
         }
-      }
 
-      // GENERATE ANIMATED PREVIEW
-      if (GEN_ANIM) {
+        // GENERATE ANIMATED PREVIEW
+        if (GEN_ANIM) {
         // Replace extension with .avif
-        const animatedFileName = `${fileBaseName}_preview_a${filenameOptions}.avif`
-        const animatedCachePath = path.join(TEMP_DIR, animatedFileName)
-        const animatedOutputPath = path.join(currentPath, animatedFileName)
+          const animatedFileName = `${fileBaseName}_preview_a${filenameOptions}.avif`
+          const animatedCachePath = path.join(TEMP_DIR, animatedFileName)
+          const animatedOutputPath = path.join(currentPath, animatedFileName)
 
-        if (!fs.existsSync(animatedOutputPath) || OVERWRITE) {
-          console.log(animatedOutputPath)
+          if (!fs.existsSync(animatedOutputPath) || OVERWRITE) {
+            console.log(animatedOutputPath)
 
-          // put file in temp directory
-          if (!existsSync(cachedFilePath)) {
-            fs.cpSync(filePath, cachedFilePath)
-          }
+            // put file in temp directory
+            if (!existsSync(cachedFilePath)) {
+              fs.cpSync(filePath, cachedFilePath)
+            }
 
-          const commandScriptPath = path.join(TEMP_DIR, `${fileBaseName}_cmd.txt`)
-          // Make preview images
-          try {
-            for (let i = 0; i < ANIM_DUR * ANIM_FPS; i++) {
+            const commandScriptPath = path.join(TEMP_DIR, `${fileBaseName}_cmd.txt`)
+            // Make preview images
+            try {
+              for (let i = 0; i < ANIM_DUR * ANIM_FPS; i++) {
               // write new command script for each image
-              if (!fs.existsSync(commandScriptPath)) {
-                fs.writeFileSync(commandScriptPath, '')
-              }
-              fs.truncateSync(commandScriptPath, 0)
-              fs.writeFileSync(commandScriptPath, `
+                if (!fs.existsSync(commandScriptPath)) {
+                  fs.writeFileSync(commandScriptPath, '')
+                }
+                fs.truncateSync(commandScriptPath, 0)
+                fs.writeFileSync(commandScriptPath, `
                 set_camera front
                 azimuth_camera ${String(Math.round((360.0 / (ANIM_DUR * ANIM_FPS)) * i))}`,
-              )
-              // Render frame
+                )
+                // Render frame
+                execSync(
+                  `f3d "${cachedFilePath}" --config="${F3D_CONFIG_PATH}" --command-script="${commandScriptPath}" --output="${path.join(TEMP_DIR, `${fileBaseName}_${String(i).padStart(3, '0')}.png`)}"${cmdOptions}`,
+                  { stdio: ['pipe', 'pipe', 'pipe'] })
+              }
+
+              // use ffmpeg to create avif video
               execSync(
-                `f3d "${cachedFilePath}" --config="${F3D_CONFIG_PATH}" --command-script="${commandScriptPath}" --output="${path.join(TEMP_DIR, `${fileBaseName}_${String(i).padStart(3, '0')}.png`)}"${cmdOptions}`,
-                { stdio: ['pipe', 'pipe', 'pipe'] })
-            }
+                `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${path.join(TEMP_DIR, `${fileBaseName}_%03d.png`)}" -c:v libsvtav1 -preset 1 -crf 20 -g ${String(Math.min(Math.round(ANIM_FPS / 2), 1))} -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1 "${animatedCachePath}"`,
+                { stdio: ['ignore', 'pipe', 'pipe'] })
 
-            // use ffmpeg to create avif video
-            execSync(
-              `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${path.join(TEMP_DIR, `${fileBaseName}_%03d.png`)}" -c:v libsvtav1 -preset 1 -crf 20 -g ${String(Math.min(Math.round(ANIM_FPS / 2), 1))} -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1 "${animatedCachePath}"`,
-              { stdio: ['ignore', 'pipe', 'pipe'] })
-
-            removeAnimatedPreviews(currentPath, fileBaseName)
-            fs.cpSync(animatedCachePath, animatedOutputPath)
-            if (!successFiles.includes(filePath)) {
-              successFiles.push(filePath)
-            }
-          } catch (error) {
-            console.error(`Error generating Animated preview:`, (error as Error).message)
-            if (!errorFiles.includes(filePath)) {
-              errorFiles.push(filePath)
+              removeAnimatedPreviews(currentPath, fileBaseName)
+              fs.cpSync(animatedCachePath, animatedOutputPath)
+              if (!successFiles.includes(filePath)) {
+                successFiles.push(filePath)
+              }
+            } catch (error) {
+              console.error(`Error generating Animated preview:`, (error as Error).message)
+              if (!errorFiles.includes(filePath)) {
+                errorFiles.push(filePath)
+              }
             }
           }
         }
-      }
-    } finally {
+      } finally {
       // Cleanup files stored in cache directory
-      removeMatchingFiles(TEMP_DIR, new RegExp('.*'))
+        removeMatchingFiles(TEMP_DIR, new RegExp('.*'))
+      }
     }
-  })
-
-  dirs.forEach((dir) => {
-    walkDirectory(path.join(currentPath, dir), currentDataPackage)
   })
 }
 
