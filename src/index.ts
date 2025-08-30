@@ -6,6 +6,7 @@ import type { DataPackage, UpDirection } from './types/DataPackage'
 const MODELS_DIR = process.env.MODELS_DIR ?? '/models'
 
 const INPUT_EXTS = process.env.INPUT_EXTS ?? 'stl,obj'
+const IGNORE = process.env.IGNORE ?? ''
 const RANDOM_ORDER = booleanString(process.env.RANDOM_ORDER)
 
 const GEN_STATIC = booleanString(process.env.GEN_STATIC) ?? true
@@ -25,6 +26,14 @@ const EXT_LIST = INPUT_EXTS.split(' ')
   .split(';')
   .join(',')
   .split(',')
+  .filter(e => e)
+
+const IGNORE_LIST = IGNORE.split(' ')
+  .join(',')
+  .split(';')
+  .join(',')
+  .split(',')
+  .filter(i => i)
 
 const errorFiles: string[] = []
 const successFiles: string[] = []
@@ -137,7 +146,11 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
     return a.toLowerCase().localeCompare(b.toLowerCase())
   })
 
-  files = files.concat(dirs)
+  files = files.concat(dirs).filter(f =>
+    !IGNORE_LIST.some(i =>
+      path.join(currentPath, f).includes(i),
+    ),
+  )
 
   if (RANDOM_ORDER) {
     arrShuffle(files)
