@@ -176,7 +176,7 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
         // Get input file base name without extension
         const fileBaseName = path.basename(fileName, path.extname(fileName))
 
-        // If REMOVE_EXISTING then remove existing previews before starting
+        // If REMOVE_EXISTING then remove existing previews before starting, overrides OVERWRITE
         if (REMOVE_EXISTING) {
           removeStaticPreviews(currentPath, fileBaseName)
           removeAnimatedPreviews(currentPath, fileBaseName)
@@ -191,7 +191,7 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
           const previewOutputPath = path.join(currentPath, `${previewFileBaseName}.avif`)
 
           if (!fs.existsSync(previewOutputPath) || OVERWRITE) {
-            console.log(previewOutputPath)
+            console.log(`📘 ${previewOutputPath}`)
 
             // put file in temp directory
             if (!existsSync(cachedFilePath)) {
@@ -209,13 +209,20 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
                 `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${previewCachePngPath}" -c:v libsvtav1 -preset 1 -crf 10 -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1:avif=1 "${previewCacheAvifPath}"`,
                 { stdio: ['ignore', 'pipe', 'pipe'] })
 
-              removeStaticPreviews(currentPath, fileBaseName)
-              fs.cpSync(previewCacheAvifPath, previewOutputPath)
-              if (!successFiles.includes(filePath)) {
-                successFiles.push(filePath)
+              if (fs.existsSync(previewOutputPath) && !OVERWRITE) {
+                console.error(`📙 Output file already exists and OVERWRITE is "false" or unset. This is either a collisions with two instances or a serious issue.`)
+                if (!errorFiles.includes(filePath)) {
+                  errorFiles.push(filePath)
+                }
+              } else {
+                removeStaticPreviews(currentPath, fileBaseName)
+                fs.cpSync(previewCacheAvifPath, previewOutputPath)
+                if (!successFiles.includes(filePath)) {
+                  successFiles.push(filePath)
+                }
               }
             } catch (error) {
-              console.error(`Error generating PNG preview:`, (error as Error).message)
+              console.error(`📕 Error generating PNG preview:`, (error as Error).message)
               if (!errorFiles.includes(filePath)) {
                 errorFiles.push(filePath)
               }
@@ -231,7 +238,7 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
           const animatedOutputPath = path.join(currentPath, animatedFileName)
 
           if (!fs.existsSync(animatedOutputPath) || OVERWRITE) {
-            console.log(animatedOutputPath)
+            console.log(`📘 ${animatedOutputPath}`)
 
             // put file in temp directory
             if (!existsSync(cachedFilePath)) {
@@ -262,13 +269,20 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
                 `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${path.join(TEMP_DIR, `${fileBaseName}_%03d.png`)}" -c:v libsvtav1 -preset 1 -crf 20 -g ${String(Math.min(Math.round(ANIM_FPS / 2), 1))} -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1 "${animatedCachePath}"`,
                 { stdio: ['ignore', 'pipe', 'pipe'] })
 
-              removeAnimatedPreviews(currentPath, fileBaseName)
-              fs.cpSync(animatedCachePath, animatedOutputPath)
-              if (!successFiles.includes(filePath)) {
-                successFiles.push(filePath)
+              if (fs.existsSync(animatedOutputPath) && !OVERWRITE) {
+                console.error(`📙 Output file already exists and OVERWRITE is "false" or unset. This is either a collisions with two instances or a serious issue.`)
+                if (!errorFiles.includes(filePath)) {
+                  errorFiles.push(filePath)
+                }
+              } else {
+                removeAnimatedPreviews(currentPath, fileBaseName)
+                fs.cpSync(animatedCachePath, animatedOutputPath)
+                if (!successFiles.includes(filePath)) {
+                  successFiles.push(filePath)
+                }
               }
             } catch (error) {
-              console.error(`Error generating Animated preview:`, (error as Error).message)
+              console.error(`📕 Error generating Animated preview:`, (error as Error).message)
               if (!errorFiles.includes(filePath)) {
                 errorFiles.push(filePath)
               }
@@ -294,9 +308,6 @@ if (!fs.statSync(TEMP_DIR).isDirectory()) {
 // Start walking from the initial directory
 walkDirectory(MODELS_DIR)
 if (errorFiles.length) {
-  console.error(`The following ${String(errorFiles.length)} files had issues:\n`, errorFiles.join('\n'))
+  console.error(`📕 The following ${String(errorFiles.length)} files had issues:\n`, errorFiles.join('\n'))
 }
-if (successFiles.length) {
-  console.log(`Created ${String(successFiles.length)} preview files.`)
-}
-console.log('Done generating previews.')
+console.log(`📗 Created ${String(successFiles.length)} preview files.`)
