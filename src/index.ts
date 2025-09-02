@@ -37,6 +37,7 @@ const IGNORE_LIST = IGNORE.split(' ')
 
 const errorFiles: string[] = []
 const successFiles: string[] = []
+const collisionFiles: string[] = []
 
 function booleanString(value: unknown): boolean | null {
   if (typeof value === 'boolean') {
@@ -156,7 +157,7 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
     arrShuffle(files)
   }
 
-  files.forEach((fileName) => {
+  for (const fileName of files) {
     // Get full path of current file
     const filePath = path.join(currentPath, fileName)
 
@@ -222,10 +223,10 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
                 `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${previewCachePngPath}" -c:v libsvtav1 -preset 1 -crf 10 -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1:avif=1 "${previewCacheAvifPath}"`,
                 { stdio: ['ignore', 'pipe', 'pipe'] })
 
-              if (fs.existsSync(previewOutputPath) && !OVERWRITE) {
-                console.error(`📙 Output file already exists and OVERWRITE is "false" or unset. This is either a collisions with two instances or a serious issue.`)
-                if (!errorFiles.includes(filePath)) {
-                  errorFiles.push(filePath)
+              if (fs.existsSync(previewOutputPath) && !OVERWRITE && !REMOVE_EXISTING) {
+                console.error(`📙 Output file already exists and OVERWRITE and REMOVE_EXISTING are "false" or unset. This could be a collision with another instance.`)
+                if (!collisionFiles.includes(filePath)) {
+                  collisionFiles.push(filePath)
                 }
               } else {
                 removeStaticPreviews(currentPath, fileBaseName)
@@ -282,12 +283,15 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
                 `ffmpeg -y -framerate ${String(ANIM_FPS)} -i "${path.join(TEMP_DIR, `${fileBaseName}_%03d.png`)}" -c:v libsvtav1 -preset 1 -crf 20 -g ${String(Math.min(Math.round(ANIM_FPS / 2), 1))} -pix_fmt yuv420p -svtav1-params tune=0:fast-decode=1 "${animatedCachePath}"`,
                 { stdio: ['ignore', 'pipe', 'pipe'] })
 
-              if (fs.existsSync(animatedOutputPath) && !OVERWRITE) {
-                console.error(`📙 Output file already exists and OVERWRITE is "false" or unset. This is either a collisions with two instances or a serious issue.`)
-                if (!errorFiles.includes(filePath)) {
-                  errorFiles.push(filePath)
+              if (fs.existsSync(animatedOutputPath) && !OVERWRITE && !REMOVE_EXISTING) {
+                console.error(`📙 Output file already exists and OVERWRITE and REMOVE_EXISTING are "false" or unset. This could be a collision with another instance.`)
+                if (!collisionFiles.includes(filePath)) {
+                  collisionFiles.push(filePath)
                 }
               } else {
+                // TODO: Retry System
+                //  at this point significant compute has been used to generate the animated preview
+                //  so we should try not to lose it.
                 removeAnimatedPreviews(currentPath, fileBaseName)
                 fs.cpSync(animatedCachePath, animatedOutputPath)
                 if (!successFiles.includes(filePath)) {
@@ -307,7 +311,7 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
         removeMatchingFiles(TEMP_DIR, new RegExp('.*'))
       }
     }
-  })
+  }
 }
 
 // Make sure TEMP_DIR exists and is directory
@@ -318,9 +322,22 @@ if (!fs.statSync(TEMP_DIR).isDirectory()) {
   throw new Error(`${TEMP_DIR} must be a directory!`)
 }
 
+process.on('SIGINT', function () {
+  process.exit(0)
+})
+process.on('SIGTERM', function () {
+  process.exit(0)
+})
+
+process.on('exit', () => {
+  if (errorFiles.length) {
+    console.error(`📕 ${String(errorFiles.length)} files had preview generation errors.`)
+  }
+  if (collisionFiles.length) {
+    console.log(`📙 ${String(collisionFiles.length)} files had collisions where multiple instances generated a preview for the same file.`)
+  }
+  console.log(`📗 ${String(successFiles.length)} successfully created preview files.`)
+})
+
 // Start walking from the initial directory
 walkDirectory(MODELS_DIR)
-if (errorFiles.length) {
-  console.error(`📕 The following ${String(errorFiles.length)} files had issues:\n`, errorFiles.join('\n'))
-}
-console.log(`📗 Created ${String(successFiles.length)} preview files.`)

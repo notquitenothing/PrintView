@@ -14,7 +14,7 @@ To setup using docker compose, create a `compose.yml` file as follows:
 ``` yaml
 services:
   model-preview-gen: 
-    image: notquitenothing/printview:latest
+    image: notquitenothing/printview:edge
     env_file:
       - .env
     volumes:
