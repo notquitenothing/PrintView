@@ -253,8 +253,8 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
                   removeStaticPreviews(currentPath, fileBaseName)
                   fs.cpSync(previewCacheAvifPath, previewOutputPath)
                   successStaticFiles.push({ filePath, duration })
-                  const average = successStaticFiles.reduce((sum, value) => sum + value.duration, 0) / successStaticFiles.length
-                  console.log(`${String(duration)} seconds; average: ${String(average)} seconds per static preview.`)
+                  const average = Math.round(successStaticFiles.reduce((sum, value) => sum + value.duration, 0) / successStaticFiles.length)
+                  console.log(`📓 ${String(duration)} seconds; average: ${String(average)} seconds per static preview.`)
                 }
               } catch (error) {
                 console.error(`📕 Error generating PNG preview:`, (error as Error).message)
@@ -328,8 +328,8 @@ function walkDirectory(currentPath: string, currentDataPackage?: DataPackage) {
                   removeAnimatedPreviews(currentPath, fileBaseName)
                   fs.cpSync(animatedCachePath, animatedOutputPath)
                   successAnimFiles.push({ filePath, duration })
-                  const average = successAnimFiles.reduce((sum, value) => sum + value.duration, 0) / successAnimFiles.length
-                  console.log(`${String(duration)} seconds; average: ${String(average)} seconds per animated preview.`)
+                  const average = Math.round(successAnimFiles.reduce((sum, value) => sum + value.duration, 0) / successAnimFiles.length)
+                  console.log(`📓 ${String(duration)} seconds; average: ${String(average)} seconds per animated preview.`)
                 }
               } catch (error) {
                 console.error(`📕 Error generating Animated preview:`, (error as Error).message)
