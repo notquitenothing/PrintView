@@ -19,7 +19,7 @@ const GEN_ANIM = (booleanString(process.env.GEN_ANIM)) && !RM_ANIM
 
 const OVERWRITE = booleanString(process.env.OVERWRITE)
 
-const ANIM_FPS = posIntString(process.env.ANIM_FPS) ?? 30
+const ANIM_FPS = posIntString(process.env.ANIM_FPS) ?? 20
 const ANIM_DUR = parseFloat((posFloatString(process.env.ANIM_DUR) ?? 8).toFixed(1))
 
 const TEMP_DIR = './temp'
