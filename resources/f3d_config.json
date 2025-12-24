@@ -19,7 +19,7 @@
       "translucency-support": false,
 
       "up": "+Z",
-      "resolution": "1024,1024",
+      "resolution": "512,512",
       "camera-zoom-factor": 1.0,
 
       "hdri-file": "./resources/DayEnvironmentHDRI025_1K-HDR.exr",
